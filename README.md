@@ -1,1 +1,2 @@
 # RectExtract
+用于提取长条图片的实验性工具，需要OpenCV3和PyQt4
