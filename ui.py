@@ -1,10 +1,16 @@
+import os.path
 import sys
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+
 import cv2
-from PyQt4.QtCore import *
-from PyQt4.QtGui import *
+from PyQt5.QtCore import QObject, pyqtSignal, Qt
+from PyQt5.QtGui import QPen, QBrush, QPainterPath
 from common import cv2pixmap, watershed, imread_u, imwrite_u
 import numpy as np
+
+from PyQt5.QtWidgets import *
 
 # Global events
 class Communicate(QObject):
@@ -51,10 +57,10 @@ class DrawScene(QGraphicsScene):
 
     def save(self):
         rect = self.rect.rect()
-        x, y, w, h = rect.x(), rect.y(), rect.width(), rect.height()
+        x, y, w, h = int(rect.x()), int(rect.y()), int(rect.width()), int(rect.height())
         if w > 0 and h > 0:
             img = self.image[y:y + h, x:x + w]
-            file_name = QFileDialog.getSaveFileName(None, "Save Image", "out", 'PNG Image (*.png)')
+            file_name = QFileDialog.getSaveFileName(None, "Save Image", "out", 'PNG Image (*.png)')[0]
             if file_name:
                 imwrite_u(file_name, img)
 
@@ -173,7 +179,7 @@ class MainWindow(QMainWindow):
         comm.markerUpdated.connect(lambda marker: comm.rectResult.emit(watershed(image, marker)))
 
     def openImage(self):
-        filename = QFileDialog.getOpenFileName(None, "Open image", ".", "Image Files (*.bmp *.jpg *.png *.tif *.tiff)")
+        filename = QFileDialog.getOpenFileName(None, "Open image", ".", "Image Files (*.bmp *.jpg *.png *.tif *.tiff)")[0]
         if filename == '':
             return None
         return imread_u(filename)  # Load as is

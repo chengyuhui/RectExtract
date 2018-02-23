@@ -2,7 +2,7 @@ import os
 
 import cv2
 import os.path
-from PyQt4 import QtCore, QtGui
+from PyQt5 import QtCore, QtGui
 import numpy as np
 
 def cv2pixmap(cvimage):
