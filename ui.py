@@ -6,7 +6,7 @@ sys.path.insert(0, HERE)
 
 import cv2
 from PyQt5.QtCore import QObject, pyqtSignal, Qt
-from PyQt5.QtGui import QPen, QBrush, QPainterPath
+from PyQt5.QtGui import QPen, QBrush, QPainterPath, QKeySequence
 from common import cv2pixmap, watershed, imread_u, imwrite_u
 import numpy as np
 
@@ -19,6 +19,7 @@ class Communicate(QObject):
     reset = pyqtSignal()
     rectResult = pyqtSignal(tuple)
     save = pyqtSignal()
+    openImage = pyqtSignal()
 
 comm = Communicate()
 autoUpdate = False
@@ -35,7 +36,8 @@ class DrawScene(QGraphicsScene):
         self.addItem(self.imagePanel)
         self.rect = QGraphicsRectItem()
         self.addItem(self.rect)
-        self.image = img
+
+        self.setImage(img)
 
         pen = QPen(Qt.DashDotLine)
         pen.setBrush(Qt.red)
@@ -46,7 +48,12 @@ class DrawScene(QGraphicsScene):
 
         comm.rectResult.connect(self.drawRect)
         comm.reset.connect(self.resetRect)
-        comm.save.connect(self.save)
+        # comm.save.connect(self.save)
+
+    def setImage(self, image):
+        self.image = image
+        self.imagePanel.setImage(image)
+        self.resetRect()
 
     def drawRect(self, rect):
         x, y, w, h = rect
@@ -55,14 +62,11 @@ class DrawScene(QGraphicsScene):
     def resetRect(self):
         self.rect.setRect(0, 0, 0, 0)
 
-    def save(self):
+    def crop(self):
         rect = self.rect.rect()
         x, y, w, h = int(rect.x()), int(rect.y()), int(rect.width()), int(rect.height())
         if w > 0 and h > 0:
-            img = self.image[y:y + h, x:x + w]
-            file_name = QFileDialog.getSaveFileName(None, "Save Image", "out", 'PNG Image (*.png)')[0]
-            if file_name:
-                imwrite_u(file_name, img)
+            return self.image[y:y + h, x:x + w]
 
 class ImageDrawPanel(QGraphicsPixmapItem):
     def __init__(self, parent=None, image=None):
@@ -70,27 +74,27 @@ class ImageDrawPanel(QGraphicsPixmapItem):
 
         self.parent = parent
         # Image
-        self.image_orig = image
-        self.image = image.copy()
-        self.setPixmap(cv2pixmap(image))
+        self.setImage(image)
         # Color
         self.color = RED
         # Points
         self.prev_pt = None
         self.pt = None
-        # Marker
-        self.markers = np.zeros(image.shape[:2], np.int32)
         # Signal slots
         comm.reset.connect(self.reset)
-        comm.setColor.connect(self.setColor)
+
+    def setImage(self, image):
+        # Image
+        self.image_orig = image
+        self.image = image.copy()
+        self.setPixmap(cv2pixmap(image))
+        # Marker
+        self.markers = np.zeros(image.shape[:2], np.int32)
 
     def reset(self):
         self.image = self.image_orig.copy()
         self.markers.fill(0)
         self.update()
-
-    def setColor(self, color):
-        self.color = color
 
     def paint(self, painter, option, widget=None):
         painter.drawPixmap(0, 0, cv2pixmap(self.image))
@@ -106,6 +110,10 @@ class ImageDrawPanel(QGraphicsPixmapItem):
     def mousePressEvent(self, event):
         self.prev_pt = self.get_pt(event)
         self.pt = self.get_pt(event)
+        if event.button() == Qt.LeftButton:
+            self.color = RED
+        if event.button() == Qt.RightButton:
+            self.color = GREEN
         self.update()
 
     def mouseMoveEvent(self, event):
@@ -115,6 +123,7 @@ class ImageDrawPanel(QGraphicsPixmapItem):
     def mouseReleaseEvent(self, event):
         self.prev_pt = None
         comm.markerUpdated.emit(self.markers)
+        self.color = RED
         self.update()
 
     def get_pt(self, event):
@@ -132,42 +141,39 @@ class CtrlWidget(QWidget):
 
         self.layout = QVBoxLayout()
 
-        self.addColorBtn('Target Red', RED)
-        self.addColorBtn('Exclude Green', GREEN)
-
-        reset_btn = QPushButton("Reset")
-        reset_btn.clicked.connect(lambda: comm.reset.emit())
-        self.layout.addWidget(reset_btn)
-
-        save_btn = QPushButton('Save')
-        save_btn.clicked.connect(lambda: comm.save.emit())
-        self.layout.addWidget(save_btn)
+        self.addCommand("Open", Qt.CTRL + Qt.Key_O, comm.openImage)
+        self.addCommand("Reset", Qt.Key_R, comm.reset)
+        self.addCommand("Save", Qt.CTRL + Qt.Key_S, comm.save)
 
         check_auto = QCheckBox('Realtime Update')
-        # check_auto.setChecked(True)
         check_auto.stateChanged.connect(self.toggleAuto)
         self.layout.addWidget(check_auto)
 
         self.setLayout(self.layout)
 
-    def addColorBtn(self, label, color):
-        button = QPushButton(label)
-        button.clicked.connect(lambda: comm.setColor.emit(color))
-        self.layout.addWidget(button)
-
     def toggleAuto(self, state):
         global autoUpdate
         autoUpdate = (state == Qt.Checked)
+
+    def addCommand(self, text, shortcut, slot):
+        btn = QPushButton(text)
+        btn.setShortcut(QKeySequence(shortcut))
+        btn.clicked.connect(lambda: slot.emit())
+        self.layout.addWidget(btn)
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super(MainWindow, self).__init__()
 
+        self.filename = None
+        self.counter = 0
+
         image = self.openImage()
         self.draw_scene = DrawScene(image)
+        self.draw_view = QGraphicsView(self.draw_scene)
 
         layout = QHBoxLayout()
-        layout.addWidget(QGraphicsView(self.draw_scene))
+        layout.addWidget(self.draw_view)
         layout.addWidget(CtrlWidget())
 
         self.widget = QWidget()
@@ -177,12 +183,39 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("~~~")
 
         comm.markerUpdated.connect(lambda marker: comm.rectResult.emit(watershed(image, marker)))
+        comm.openImage.connect(self.updateImage)
+        comm.save.connect(self.saveImage)
+
+        self.showMaximized()
+        self.resetScroll()
+
+    def resetScroll(self):
+        self.draw_view.verticalScrollBar().setValue(0)
+
+    def updateImage(self):
+        self.draw_scene.setImage(self.openImage())
+        self.resetScroll()
 
     def openImage(self):
         filename = QFileDialog.getOpenFileName(None, "Open image", ".", "Image Files (*.bmp *.jpg *.png *.tif *.tiff)")[0]
         if filename == '':
-            return None
+            return
+        self.filename = filename
         return imread_u(filename)  # Load as is
+
+    def saveImage(self):
+        img = self.draw_scene.crop()
+        if img is None:
+            return
+        prefix = self.filename.rsplit('.')[0]
+        outname = prefix + "_" + str(self.counter)
+        outname = QFileDialog.getSaveFileName(None, "Save Image", outname, 'PNG Image (*.png)')[0]
+        if outname == '':
+            return
+        imwrite_u(outname, img)
+        self.counter = self.counter + 1
+        comm.reset.emit()
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
