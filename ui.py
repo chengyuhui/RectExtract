@@ -195,6 +195,7 @@ class MainWindow(QMainWindow):
     def updateImage(self):
         self.draw_scene.setImage(self.openImage())
         self.resetScroll()
+        self.counter = 0
 
     def openImage(self):
         filename = QFileDialog.getOpenFileName(None, "Open image", ".", "Image Files (*.bmp *.jpg *.png *.tif *.tiff)")[0]
