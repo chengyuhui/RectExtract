@@ -209,7 +209,7 @@ class MainWindow(QMainWindow):
         if img is None:
             return
         prefix = self.filename.rsplit('.')[0]
-        outname = prefix + "_" + str(self.counter)
+        outname = prefix + "_" + str(self.counter) + ".png"
         imwrite_u(outname, img)
         self.counter = self.counter + 1
         comm.reset.emit()
