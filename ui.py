@@ -210,9 +210,6 @@ class MainWindow(QMainWindow):
             return
         prefix = self.filename.rsplit('.')[0]
         outname = prefix + "_" + str(self.counter)
-        outname = QFileDialog.getSaveFileName(None, "Save Image", outname, 'PNG Image (*.png)')[0]
-        if outname == '':
-            return
         imwrite_u(outname, img)
         self.counter = self.counter + 1
         comm.reset.emit()
