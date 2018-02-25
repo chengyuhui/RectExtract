@@ -1,6 +1,10 @@
 import os.path
 import sys
 
+import PyQt5
+pyqt = os.path.dirname(PyQt5.__file__)
+os.environ['QT_QPA_PLATFORM_PLUGIN_PATH'] = os.path.join(pyqt, "plugins")
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
